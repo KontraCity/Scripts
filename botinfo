@@ -1,0 +1,129 @@
+#!/bin/python3
+import os, re, sys, json
+
+class Colors:
+    Blue = "\033[94m"
+    Cyan = "\033[96m"
+    Green = "\033[92m"
+    Yellow = "\033[93m"
+    Purple = "\033[95m"
+    Red = "\033[91m"
+    End = "\033[0m"
+
+    @staticmethod
+    def colored(string, color):
+        return color + str(string) + Colors.End
+
+class Guilds:
+    class Guild:
+        def __init__(self, id, name):
+            self.id = id
+            self.name = name
+
+    def __init__(self):
+        self.list = []
+        for line in os.popen("peek KontraBot").read().split("\n"):
+            matches = re.search("\"([\s\S]*)\" \[(\d+)\]", line)
+            if not matches:
+                continue
+            self.list.append(self.Guild(matches[2], matches[1]))
+
+    def show(self):
+        print(f"{len(self.list)} guild{'' if len(self.list) == 1 else 's'} available:")
+        for index, guild in enumerate(self.list):
+            tree_symbol = "└─" if index + 1 == len(self.list) else "├─"
+            print(f"{tree_symbol} {Colors.colored(guild.name, Colors.Blue)} [{Colors.colored(guild.id, Colors.Cyan)}]")
+
+    def get(self, name):
+        selected = []
+        for guild in self.list:
+            if name.lower() in guild.name.lower():
+                selected.append(guild)
+
+        if len(selected) == 0:
+            print(Colors.colored(f"Unknown guild: \"{name}\"", Colors.Red))
+            return None
+        if len(selected) == 1:
+            return selected[0]
+        print(Colors.colored(f"Ambiguous guild: \"{name}\"", Colors.Yellow))
+        return None
+
+class Options:
+    class Results:
+        ShowGuilds = 0
+        ShowHelp = 1
+        ShowInfo = 2
+        Unknown = 3
+
+    def __init__(self):
+        self.result = self.Results.ShowGuilds
+        self.guild_name = ""
+
+        if len(sys.argv) > 2:
+            self.result = self.Results.Unknown
+            return
+
+        for index in range(1, len(sys.argv)):
+            option = sys.argv[index]
+            if option == "-h" or option == "--help":
+                self.result = self.Results.ShowHelp
+                continue
+
+            self.result = self.Results.ShowInfo
+            self.guild_name = option
+
+def show_help():
+    print(f"Botinfo usage: {sys.argv[0]} [OPTIONS]")
+    print("Available options:")
+    print("    (No options)\tShow available guilds")
+    print("    -h, --help\t\tShow this message and exit")
+    print("    (guild name)\tName of the guild to show info of")
+
+def show_info(guild):
+    with open(f"/home/kontrabot/info/{guild.id}.json", "r") as file:
+        info_json = json.load(file)
+        settings_json = info_json["settings"]
+        stats_json = info_json["stats"]
+        settings_json["locale"] = f"\"{settings_json['locale']}\""
+        settings_json["timeout"] = f"{settings_json['timeout']} minute{'' if settings_json['timeout'] == 1 else 's'}"
+
+    print(f"Guild \"{Colors.colored(guild.name, Colors.Blue)}\"")
+    print("├─ Settings")
+    print(f"│  ├─ {Colors.colored('Change status', Colors.Blue)}: {Colors.colored('yes', Colors.Green) if settings_json['change_status'] else Colors.colored('no', Colors.Red)}")
+    print(f"│  ├─ {Colors.colored('Locale', Colors.Blue)}: {Colors.colored(settings_json['locale'], Colors.Green)}")
+    print(f"│  └─ {Colors.colored('Timeout', Colors.Blue)}: {Colors.colored(settings_json['timeout'], Colors.Cyan)}")
+    print("└─ Stats")
+    print(f"   ├─ {Colors.colored('Interactions processed', Colors.Blue)}: {Colors.colored(stats_json['interactions_processed'], Colors.Cyan)}")
+    print(f"   ├─ {Colors.colored('Sessions count', Colors.Blue)}: {Colors.colored(stats_json['sessions_count'], Colors.Cyan)}")
+    print(f"   ├─ {Colors.colored('Times kicked', Colors.Blue)}: {Colors.colored(stats_json['times_kicked'], Colors.Cyan)}")
+    print(f"   ├─ {Colors.colored('Times moved', Colors.Blue)}: {Colors.colored(stats_json['times_moved'], Colors.Cyan)}")
+    print(f"   └─ {Colors.colored('Tracks played', Colors.Blue)}: {Colors.colored(stats_json['tracks_played'], Colors.Cyan)}")
+
+if __name__ == "__main__":
+    options = Options()
+    match options.result:
+        case Options.Results.ShowHelp:
+            show_help()
+            sys.exit(0)
+        case Options.Results.Unknown:
+            print(Colors.colored("Bad arguments", Colors.Red))
+            print(f"See {sys.argv[0]} --help")
+            sys.exit(1)
+
+    guilds = Guilds()
+    if len(guilds.list) == 0:
+        print(Colors.colored("No guilds were found. Is KontraBot running?", Colors.Yellow))
+        sys.exit(1)
+
+    match options.result:
+        case Options.Results.ShowGuilds:
+            guilds.show()
+            sys.exit(0)
+        case Options.Results.ShowInfo:
+            guild = guilds.get(options.guild_name)
+            if not guild:
+                guilds.show()
+                sys.exit(1)
+            else:
+                show_info(guild)
+                sys.exit(0)
