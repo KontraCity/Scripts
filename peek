@@ -44,7 +44,7 @@ class Services:
             if name.lower() in service.lower():
                 selected.append(service)
 
-        if len(selected) == 0:
+        if not selected:
             print(Colors.colored(f"Unknown service: \"{name}\"", Colors.Red))
             return None
         if len(selected) == 1:
@@ -57,16 +57,11 @@ class Options:
         ShowServices = 0
         ShowHelp = 1
         ShowPeek = 2
-        Unknown = 3
 
     def __init__(self):
         self.result = self.Results.ShowServices
         self.service_name = ""
         self.show_all = False
-
-        if len(sys.argv) > 10:
-            self.result = self.Results.Unknown
-            return
 
         for index in range(1, len(sys.argv)):
             option = sys.argv[index]
@@ -99,7 +94,7 @@ def show_peek(service, show_all):
         if service + ".service" in line:
             if not systemd_messages:
                 systemd_messages = True
-        elif len(line) != 0:
+        elif line:
             if systemd_messages:
                 instances.append(list(records))
                 records.clear()

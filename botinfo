@@ -17,6 +17,11 @@ class Colors:
     def colored(string, color):
         return color + str(string) + Colors.End
 
+def cardinal(count):
+    if count == 1:
+        return ""
+    return "s"
+
 class Guilds:
     class Guild:
         def __init__(self, id, name):
@@ -31,7 +36,7 @@ class Guilds:
                 self.list.append(self.Guild(matches[2], matches[1]))
 
     def show(self):
-        print(f"{len(self.list)} guild{'' if len(self.list) == 1 else 's'} available:")
+        print(f"{len(self.list)} guild{cardinal(len(self.list))} available:")
         for index, guild in enumerate(self.list):
             tree_symbol = "└─" if index + 1 == len(self.list) else "├─"
             print(f"{tree_symbol} {Colors.colored(guild.name, Colors.Blue)} [{Colors.colored(guild.id, Colors.Cyan)}]")
@@ -42,7 +47,7 @@ class Guilds:
             if name.lower() in guild.name.lower():
                 selected.append(guild)
 
-        if len(selected) == 0:
+        if not selected:
             print(Colors.colored(f"Unknown guild: \"{name}\"", Colors.Red))
             return None
         if len(selected) == 1:
@@ -55,15 +60,10 @@ class Options:
         ShowGuilds = 0
         ShowHelp = 1
         ShowInfo = 2
-        Unknown = 3
 
     def __init__(self):
         self.result = self.Results.ShowGuilds
         self.guild_name = ""
-
-        if len(sys.argv) > 2:
-            self.result = self.Results.Unknown
-            return
 
         for index in range(1, len(sys.argv)):
             option = sys.argv[index]
@@ -87,7 +87,7 @@ def show_info(guild):
         settings_json = info_json["settings"]
         stats_json = info_json["stats"]
         settings_json["locale"] = f"\"{settings_json['locale']}\""
-        settings_json["timeout"] = f"{settings_json['timeout']} minute{'' if settings_json['timeout'] == 1 else 's'}"
+        settings_json["timeout"] = f"{settings_json['timeout']} minute{cardinal(settings_json['timeout'])}"
 
     print(f"Guild \"{Colors.colored(guild.name, Colors.Blue)}\"")
     print("├─ Settings")
@@ -103,14 +103,9 @@ def show_info(guild):
 
 if __name__ == "__main__":
     options = Options()
-    match options.result:
-        case Options.Results.ShowHelp:
-            show_help()
-            sys.exit(0)
-        case Options.Results.Unknown:
-            print(Colors.colored("Bad arguments", Colors.Red))
-            print(f"See {sys.argv[0]} --help")
-            sys.exit(1)
+    if options.result == Options.Results.ShowHelp:
+        show_help()
+        sys.exit(0)
 
     guilds = Guilds()
     if len(guilds.list) == 0:

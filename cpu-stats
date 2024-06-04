@@ -1,0 +1,105 @@
+#!/bin/python3
+import os, re
+
+class Colors:
+    Blue = "\033[94m"
+    Cyan = "\033[96m"
+    Green = "\033[92m"
+    Yellow = "\033[93m"
+    Purple = "\033[95m"
+    Red = "\033[91m"
+    End = "\033[0m"
+
+    @staticmethod
+    def colored(string, color):
+        return color + str(string) + Colors.End
+
+def cardinal(count):
+    if count == 1:
+        return ""
+    return "s"
+
+class Stats:
+    def __init__(self):
+        self.cpu_name = ""
+        for line in os.popen("lscpu"):
+            if "Model name:" in line:
+                self.cpu_name = f"{line.replace('Model name:', '').strip()} CPU"
+        if not self.cpu_name:
+            self.cpu_name = "CPU"
+
+        result = os.popen("vcgencmd measure_temp").read().strip()
+        matches = re.search("^temp=([\d\.]+)'C$", result)
+        self.temperature = float(matches[1]) if matches else -1
+
+        result = os.popen("vcgencmd measure_clock arm").read().strip()
+        matches = re.search("^frequency\(48\)=(\d+)$", result)
+        self.frequency = float(matches[1]) / 1000000000 if matches else -1
+
+        result = os.popen("vcgencmd get_throttled").read().strip()
+        matches = re.search("^throttled=0x([0-9a-f]+)$", result)
+        self.status_bits = int(matches[1], 16) if matches else -1
+
+    def show(self):
+        print(self.cpu_name)
+        print(f"├─ {Colors.colored('Temperature', Colors.Blue)}: {Colors.colored(f'{self.temperature:.1f} °C', Colors.Cyan)}")
+        print(f"├─ {Colors.colored('Frequency', Colors.Blue)}: {Colors.colored(f'{self.frequency:.3f} GHz', Colors.Cyan)}")
+        if not self.status_bits:
+            print(f"└─ {Colors.colored('Status', Colors.Blue)}: {Colors.colored('Good', Colors.Green)}")
+            return
+
+        current_problems = []
+        if self.status_bits & (1 << 0):
+            current_problems.append("Under-voltaged")
+        if self.status_bits & (1 << 1):
+            current_problems.append("Frequency is capped")
+        if self.status_bits & (1 << 2):
+            current_problems.append("Throttled")
+        if self.status_bits & (1 << 3):
+            current_problems.append("Soft temperature limit is active")
+
+        previous_problems = []
+        if self.status_bits & (1 << 16):
+            previous_problems.append("Was under-voltaged")
+        if self.status_bits & (1 << 17):
+            previous_problems.append("Frequency was capped")
+        if self.status_bits & (1 << 18):
+            previous_problems.append("Was throttled")
+        if self.status_bits & (1 << 19):
+            previous_problems.append("Soft temperature limit was active")
+
+        problem_count = len(current_problems) + len(previous_problems)
+        print(f"└─ {Colors.colored('Status', Colors.Blue)}: {Colors.colored(f'{problem_count} problem{cardinal(problem_count)}', Colors.Red)}")
+
+        if current_problems:
+            if not previous_problems:
+                tree_symbol = "└─"
+                tree_continuation_symbol = " "
+            else:
+                tree_symbol = "├─"
+                tree_continuation_symbol = "│"
+
+            print(f"   {tree_symbol} {Colors.colored('Currently', Colors.Red)}")
+            for index, problem in enumerate(current_problems):
+                problem_tree_symbol = "└─" if index + 1 == len(current_problems) else "├─"
+                print(f"   {tree_continuation_symbol}  {problem_tree_symbol} {Colors.colored(problem, Colors.Red)}")
+
+        if previous_problems:
+            print(f"   └─ {Colors.colored('Previously', Colors.Red)}")
+            for index, problem in enumerate(previous_problems):
+                problem_tree_symbol = "└─" if index + 1 == len(previous_problems) else "├─"
+                print(f"      {problem_tree_symbol} {Colors.colored(problem, Colors.Red)}")
+
+
+if __name__ == "__main__":
+    stats = Stats()
+    problems = []
+    if stats.temperature == -1:
+        problems.append("temperature")
+    if stats.frequency == -1:
+        problems.append("frequency")
+    if stats.status_bits == -1:
+        problems.append("status bits")
+    if problems:
+        print(Colors.colored(f"Couldn't get CPU {', '.join(problems)}", Colors.Yellow))
+    stats.show()
