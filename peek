@@ -1,0 +1,148 @@
+#!/bin/python3
+import os, sys
+
+class Settings:
+    ServicesPath = "/etc/systemd/system"
+
+class Colors:
+    Blue = "\033[94m"
+    Cyan = "\033[96m"
+    Green = "\033[92m"
+    Yellow = "\033[93m"
+    Purple = "\033[95m"
+    Red = "\033[91m"
+    End = "\033[0m"
+
+    @staticmethod
+    def colored(string, color):
+        return color + str(string) + Colors.End
+
+def cardinal(count):
+    if count == 1:
+        return ""
+    return "s"
+
+class Services:
+    def __init__(self):
+        self.list = []
+        for file in os.listdir(Settings.ServicesPath):
+            file_path = os.path.join(Settings.ServicesPath, file)
+            is_file = os.path.isfile(file_path)
+            is_link = os.path.islink(file_path)
+            if is_file and not is_link:
+                self.list.append(file.split(".")[0])
+
+    def show(self):
+        print(f"{len(self.list)} service{cardinal(len(self.list))} available:")
+        for index, service in enumerate(self.list):
+            tree_symbol = "└─" if index + 1 == len(self.list) else "├─"
+            print(f"{tree_symbol} {Colors.colored(service, Colors.Blue)}")
+
+    def get(self, name):
+        selected = []
+        for service in self.list:
+            if name.lower() in service.lower():
+                selected.append(service)
+
+        if len(selected) == 0:
+            print(Colors.colored(f"Unknown service: \"{name}\"", Colors.Red))
+            return None
+        if len(selected) == 1:
+            return selected[0]
+        print(Colors.colored(f"Ambiguous service: \"{name}\" (could be {', '.join(selected)})", Colors.Yellow))
+        return None
+
+class Options:
+    class Results:
+        ShowServices = 0
+        ShowHelp = 1
+        ShowPeek = 2
+        Unknown = 3
+
+    def __init__(self):
+        self.result = self.Results.ShowServices
+        self.service_name = ""
+        self.show_all = False
+
+        if len(sys.argv) > 10:
+            self.result = self.Results.Unknown
+            return
+
+        for index in range(1, len(sys.argv)):
+            option = sys.argv[index]
+            if option == "-a" or option == "--all":
+                self.show_all = True
+                continue
+            if option == "-h" or option == "--help":
+                self.result = self.Results.ShowHelp
+                continue
+
+            self.result = self.Results.ShowPeek
+            self.service_name = option
+
+def show_help():
+    print(f"Peek usage: {sys.argv[0]} [OPTIONS]")
+    print("Available options:")
+    print("    (No options)\tShow available services")
+    print("    -h, --help\t\tShow this message and exit")
+    print("    (service name)\tName of the service to peek")
+    print("    -a, --all\t\tShow all service records")
+
+def show_peek(service, show_all):
+    instances = []
+    records = []
+    systemd_messages = False
+
+    stream = os.popen(f"journalctl {'' if show_all else '-b'} -u {service} --output cat")
+    stream._stream.reconfigure(encoding="utf-8", errors="ignore")
+    for line in stream:
+        if service + ".service" in line:
+            if not systemd_messages:
+                systemd_messages = True
+        elif len(line) != 0:
+            if systemd_messages:
+                instances.append(list(records))
+                records.clear()
+                systemd_messages = False
+            records.append(line.strip())
+    if not show_all:
+        instances.clear()
+
+    print(f"Service \"{Colors.colored(service, Colors.Blue)}\"")
+    for instance_index, instance in enumerate(instances):
+        print(f"├─ {Colors.colored(f'Instance {instance_index + 1}', Colors.Blue)} - {Colors.colored(len(instance), Colors.Cyan)} record{cardinal(len(instance))}")
+        for record_index, record in enumerate(instance):
+            record_tree_symbol = "└─" if record_index + 1 == len(instance) else "├─"
+            print(f"│  {record_tree_symbol} {record}")
+
+    print(f"└─ {Colors.colored('Latest instance', Colors.Purple)} - {Colors.colored(len(records), Colors.Cyan)} record{cardinal(len(records))}")
+    for index, record in enumerate(records):
+        tree_symbol = "└─" if index + 1 == len(records) else "├─"
+        print(f"   {tree_symbol} {record}")
+
+if __name__ == "__main__":
+    options = Options()
+    if options.result == Options.Results.ShowHelp:
+        show_help()
+        sys.exit(0)
+
+    services = Services()
+    if len(services.list) == 0:
+        print(Colors.colored("No custom services found", Colors.Yellow))
+        sys.exit(1)
+
+    match options.result:
+        case Options.Results.ShowServices:
+            services.show()
+            sys.exit(0)
+        case Options.Results.ShowPeek:
+            service = services.get(options.service_name)
+            if not service:
+                services.show()
+                sys.exit(1)
+            else:
+                try:
+                    show_peek(service, options.show_all)
+                except (IOError, KeyboardInterrupt):
+                    pass
+                sys.exit(0)
